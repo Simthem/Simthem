@@ -1,1 +1,6 @@
 README.*_*
+update.sh
+test.sh
+*_orig
+*_new
+COMMIT_MSG.txt

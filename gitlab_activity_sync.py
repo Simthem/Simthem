@@ -55,7 +55,8 @@ MARKER_END = "<!--GITLAB-ACTIVITY:END-->"
 # Palette orange GitLab (fond sombre -> couleur de marque -> quasi blanc en
 # pointe), pour bien distinguer visuellement ce graphique de celui de GitHub
 # (vert) tout en gardant un vrai contraste sur les jours à forte activité.
-PALETTE = ["#161b22", "#3a2110", "#7a3e12", "#c1531a", "#ffb380"]
+# PALETTE = ["#161b22", "#3a2110", "#7a3e12", "#c1531a", "#ffb380"]
+PALETTE = ["#161b22", "#622704", "#b14800", "#ff8d22", "#ffcf4d"]
 
 
 # ---------------------------------------------------------------- GitLab ---
@@ -132,63 +133,98 @@ def color_for(count):
     quantiles ni de ratio au max - plus prévisible d'un jour sur l'autre."""
     if count == 0:
         return PALETTE[0]
-    if count <= 9:
+    if count <= 3:
         return PALETTE[1]
-    if count <= 19:
+    if count <= 10:
         return PALETTE[2]
-    if count <= 29:
+    if count <= 20:
         return PALETTE[3]
     return PALETTE[4]
 
 
 def generate_svg(grid, total):
+    # Même taille et même arrondi pour les cases qu'à l'origine.
     cell, gap = 11, 3
-    left_pad, top_pad = 34, 35
-    width = left_pad + len(grid) * (cell + gap) + 4
-    height = top_pad + 7 * (cell + gap) + 22
+    cell_radius = 2
+
+    # Marges réelles dans l'image, et arrondi de ses quatre coins.
+    margin_left, margin_right = 20, 24
+    labels_width = 35
+    grid_x = margin_left + labels_width
+    grid_y = 38
+    outer_radius = 14
+
+    grid_width = len(grid) * cell + max(len(grid) - 1, 0) * gap
+    grid_height = 7 * cell + 6 * gap
+    width = grid_x + grid_width + margin_right
+    height = grid_y + grid_height + 38
 
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
         f'font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">',
+        # Le clipPath rend les coins de l'IMAGE réellement transparents.
+        f'<defs><clipPath id="rounded-outer">'
+        f'<rect width="{width}" height="{height}" rx="{outer_radius}"/>'
+        f'</clipPath></defs>',
+        f'<g clip-path="url(#rounded-outer)">',
         f'<rect width="{width}" height="{height}" fill="#0d1117"/>',
-        f'<text x="{left_pad}" y="16" fill="#c9d1d9" font-size="12">'
+        f'<text x="{grid_x}" y="18" fill="#c9d1d9" font-size="12">'
         f'{total} contributions GitLab (12 derniers mois)</text>',
     ]
 
     last_month = None
     for wi, week in enumerate(grid):
+        if not week:
+            continue
         first_day = week[0][0]
         if first_day.day <= 7 and first_day.month != last_month:
-            x = left_pad + wi * (cell + gap)
+            x = grid_x + wi * (cell + gap)
             parts.append(
-                f'<text x="{x}" y="{top_pad - 6}" fill="#8b949e" font-size="9">'
+                f'<text x="{x}" y="{grid_y - 7}" fill="#8b949e" font-size="9">'
                 f'{first_day.strftime("%b")}</text>'
             )
             last_month = first_day.month
 
     for idx, label in {1: "Mon", 3: "Wed", 5: "Fri"}.items():
-        y = top_pad + idx * (cell + gap) + cell - 2
-        parts.append(f'<text x="0" y="{y}" fill="#8b949e" font-size="9">{label}</text>')
+        y = grid_y + idx * (cell + gap) + cell - 2
+        parts.append(
+            f'<text x="{margin_left}" y="{y}" fill="#8b949e" font-size="9">'
+            f'{label}</text>'
+        )
 
     for wi, week in enumerate(grid):
         for di, (d, count) in enumerate(week):
-            x = left_pad + wi * (cell + gap)
-            y = top_pad + di * (cell + gap)
+            x = grid_x + wi * (cell + gap)
+            y = grid_y + di * (cell + gap)
             color = color_for(count)
             parts.append(
-                f'<rect x="{x}" y="{y}" width="{cell}" height="{cell}" rx="2" '
-                f'fill="{color}"><title>{d.isoformat()}: {count}</title></rect>'
+                f'<rect x="{x}" y="{y}" width="{cell}" height="{cell}" '
+                f'rx="{cell_radius}" fill="{color}">'
+                f'<title>{d.isoformat()}: {count}</title></rect>'
             )
 
-    legend_y = height - 8
-    parts.append(f'<text x="{left_pad}" y="{legend_y}" fill="#8b949e" font-size="9">Moins</text>')
-    lx = left_pad + 38
-    for c in PALETTE:
-        parts.append(f'<rect x="{lx}" y="{legend_y - 9}" width="9" height="9" rx="2" fill="{c}"/>')
+    legend_y = grid_y + grid_height + 18
+    parts.append(
+        f'<text x="{grid_x}" y="{legend_y}" fill="#8b949e" font-size="9">Moins</text>'
+    )
+    lx = grid_x + 40
+    for color in PALETTE:
+        parts.append(
+            f'<rect x="{lx}" y="{legend_y - 9}" width="9" height="9" '
+            f'rx="2" fill="{color}"/>'
+        )
         lx += 12
-    parts.append(f'<text x="{lx + 4}" y="{legend_y}" fill="#8b949e" font-size="9">Plus</text>')
+    parts.append(
+        f'<text x="{lx + 4}" y="{legend_y}" fill="#8b949e" font-size="9">Plus</text>'
+    )
 
-    parts.append("</svg>")
+    # Bordure fine, discrète, à l'intérieur de la zone arrondie.
+    parts.append(
+        f'<rect x="0.6" y="0.6" width="{width - 1.2}" height="{height - 1.2}" '
+        f'rx="{outer_radius}" fill="none" stroke="#30363d" stroke-width="1.2"/>'
+    )
+    parts.extend(["</g>", "</svg>"])
     return "".join(parts)
 
 
